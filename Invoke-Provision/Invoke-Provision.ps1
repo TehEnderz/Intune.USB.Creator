@@ -357,7 +357,7 @@ try {
     #region Bootstrap drivers
     $deviceModel = Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty Model
     Write-Host "`nDevice Model: " -ForegroundColor Yellow -NoNewline
-    $drivers = Get-ChildItem $usb.driverPath -Filter *.inf -Recurse
+    $drivers = Get-ChildItem "${usb.driverPath}\WinPE" -Filter *.inf -Recurse
     if ($drivers) {
         Write-Host $deviceModel -ForegroundColor Cyan
         Write-Host "Bootstrapping found drivers into WinPE Environment.." -ForegroundColor Yellow
