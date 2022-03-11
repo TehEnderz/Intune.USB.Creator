@@ -461,9 +461,11 @@ try {
     }
     #endregion
     #region Applying drivers
-    if (Get-ChildItem "$($usb.driverPath)\*.inf" -Recurse -ErrorAction SilentlyContinue) {
+    $modelDriverPath = "${usb.driverPath}\$deviceModel"
+
+    if (Test-Path $modelDriverPath -And Get-ChildItem "$$modelDriverPath\*.inf" -Recurse -ErrorAction SilentlyContinue) {
         Write-Host "`nApplying drivers.." -ForegroundColor Yellow
-        Add-Driver -driverPath $usb.driverPath -scratchDrive $usb.scRoot
+        Add-Driver -driverPath $modelDriverPath -scratchDrive $usb.scRoot
     }
     #endregion
     $completed = $true
