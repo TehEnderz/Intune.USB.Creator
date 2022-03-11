@@ -461,3 +461,7 @@ finally {
     }
 }
 #endregion
+
+Write-Host "Press ENTER to restart"
+Read-Host
+Restart-Computer
