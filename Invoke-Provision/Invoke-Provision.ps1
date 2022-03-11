@@ -253,37 +253,6 @@ exit
     }
 
 }
-function Format-USBDisk {
-    [cmdletbinding()]
-    param (
-        [parameter(mandatory = $false)]
-        [string]$winPEDrive = "X:",
-
-        [parameter(mandatory = $false)]
-        [string]$targetDrive = "1"
-    )
-    try {
-        $txt = "$winPEDrive\winpart.txt"
-        New-Item $txt -itemType File -force | Out-Null
-        $winpartCmd = @"
-select disk $targetDrive
-clean
-create partition primary
-active
-format quick fs=ntfs label="PortableUSB"
-assign letter=?
-exit
-"@
-        #region Partition disk
-        $winpartCmd | Out-File $txt -Encoding ascii -Force -NoNewline
-        Write-Host "Formatting target disk.." -ForegroundColor Cyan
-        Invoke-Cmdline -application diskpart -argumentList "/s $txt" -silent
-        #endregion
-    }
-    catch {
-        throw $_
-    }
-}
 function Find-InstallWim {
     [cmdletbinding()]
     param (
@@ -479,17 +448,11 @@ finally {
     if ($exitEarly) {
         $errorMsg = $null
     }
-    if ($exitEarlyUsbWipe) {
-        Format-USBDisk -targetDrive $USBDrive
-    }
     if ($errorMsg) {
         Write-Warning $errorMsg
     }
     else {
         if ($completed) {
-            if ($usbWipe) {
-                Format-USBDisk -targetDrive $USBDrive
-            }
             Write-Host "`nProvisioning process completed..`nTotal time taken: $($sw.elapsed)" -ForegroundColor Green
         }
         else {
