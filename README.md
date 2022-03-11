@@ -1,8 +1,6 @@
 # Intune.USB.Creator
 
-[![Build Status](https://dev.azure.com/powers-hell/Intune.USB.Creator/_apis/build/status/tabs-not-spaces.Intune.USB.Creator?branchName=master)](https://dev.azure.com/powers-hell/Intune.USB.Creator/_build/latest?definitionId=31&branchName=master)
-![PowerShell Gallery](https://img.shields.io/powershellgallery/v/Intune.USB.Creator.svg?style=flat&logo=powershell&label=PSGallery%20Version)
-![PSGallery Downloads](https://img.shields.io/powershellgallery/dt/Intune.USB.Creator.svg?style=flat&logo=powershell&label=PSGallery%20Downloads)
+Image Deploy with some improvements.
 
 ## ⚠⚠⚠ BEFORE RAISING ANY ISSUES ⚠⚠⚠
 
@@ -77,7 +75,7 @@ Lastly, I'm providing a copy of WinPE (which also includes the "Invoke-Provision
 
 * V1.0.1.311
   - ImageIndex & DiskNum variables added to allow non-interactive use of module. (Thanks axgch)
-  
+
 * v1.0.1.309
   - USB size check implemented - no smaller than 8gb. (Thanks Rob)
   - Autopilot provisioning path now tested (Thanks Rob)
