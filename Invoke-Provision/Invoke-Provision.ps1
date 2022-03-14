@@ -326,17 +326,15 @@ try {
     #region Bootstrap drivers
     $deviceModel = Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty Model
     Write-Host "`nDevice Model: " -ForegroundColor Yellow -NoNewline
-    Write-Host $deviceModel
+    Write-Host $deviceModel -ForegroundColor Cyan
 
-    $drivers = Get-ChildItem "${usb.driverPath}\WinPE" -Filter *.inf -Recurse
-    if ($drivers) {
-        Write-Host $deviceModel -ForegroundColor Cyan
+    if (Test-Path "${usb.driverPath}\WinPE") {
+        $drivers = Get-ChildItem "${usb.driverPath}\WinPE" -Filter *.inf -Recurse
         Write-Host "Bootstrapping found drivers into WinPE Environment.." -ForegroundColor Yellow
         foreach ($d in $drivers) {
             . drvload $d.fullName
         }
-    }
-    else {
+    } else {
         Write-Host "No drivers detected.." -ForegroundColor Yellow
     }
 
@@ -345,7 +343,7 @@ try {
     Set-PowerPolicy -powerPlan HighPerformance
     #endregion
     #region Warning shots..
-    Clear-Host
+    # Clear-Host
     $welcomeScreen = "IF9fICBfXyAgICBfXyAgX19fX19fICBfX19fX18gIF9fX19fXwovXCBcL1wgIi0uLyAgXC9cICBfXyBcL1wgIF9fX1wvXCAgX19fXApcIFwgXCBcIFwtLi9cIFwgXCAgX18gXCBcIFxfXyBcIFwgIF9fXAogXCBcX1wgXF9cIFwgXF9cIFxfXCBcX1wgXF9fX19fXCBcX19fX19cCiAgXC9fL1wvXy8gIFwvXy9cL18vXC9fL1wvX19fX18vXC9fX19fXy8KIF9fX19fICAgX19fX19fICBfX19fX18gIF9fICAgICAgX19fX19fICBfXyAgX18KL1wgIF9fLS4vXCAgX19fXC9cICA9PSBcL1wgXCAgICAvXCAgX18gXC9cIFxfXCBcClwgXCBcL1wgXCBcICBfX1xcIFwgIF8tL1wgXCBcX19fXCBcIFwvXCBcIFxfX19fIFwKIFwgXF9fX18tXCBcX19fX19cIFxfXCAgIFwgXF9fX19fXCBcX19fX19cL1xfX19fX1wKICBcL19fX18vIFwvX19fX18vXC9fLyAgICBcL19fX19fL1wvX19fX18vXC9fX19fXy8KICAgICAgIF9fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fCiAgICAgICBXaW5kb3dzIDEwIERldmljZSBQcm92aXNpb25pbmcgVG9vbAogICAgICAgKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKio="
     Write-Host $([system.text.encoding]::UTF8.GetString([system.convert]::FromBase64String($welcomeScreen)))
 
