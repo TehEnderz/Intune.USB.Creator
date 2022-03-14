@@ -326,6 +326,8 @@ try {
     #region Bootstrap drivers
     $deviceModel = Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty Model
     Write-Host "`nDevice Model: " -ForegroundColor Yellow -NoNewline
+    Write-Host $deviceModel
+
     $drivers = Get-ChildItem "${usb.driverPath}\WinPE" -Filter *.inf -Recurse
     if ($drivers) {
         Write-Host $deviceModel -ForegroundColor Cyan
@@ -432,7 +434,7 @@ try {
     #region Applying drivers
     $modelDriverPath = "${usb.driverPath}\$deviceModel"
 
-    if ((Test-Path $modelDriverPath) -And (Get-ChildItem "$$modelDriverPath\*.inf" -Recurse -ErrorAction SilentlyContinue)) {
+    if ((Test-Path $modelDriverPath) -And (Get-ChildItem "$modelDriverPath\*.inf" -Recurse -ErrorAction SilentlyContinue)) {
         Write-Host "`nApplying drivers.." -ForegroundColor Yellow
         Add-Driver -driverPath $modelDriverPath -scratchDrive $usb.scRoot
     }
