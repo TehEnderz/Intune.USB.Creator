@@ -255,6 +255,11 @@ function Add-Package {
 #endregion
 
 
+function printKeyValue([String] $Key, [String] $Value) {
+    Write-Host -ForegroundColor Yellow -NoNewline $key
+    Write-Host -ForegroundColor Cyan $value
+}
+
 class ImageDeploy {
     [string]                    $winPEDrive = $null
     [string]                    $winPESource = $env:winPESource
@@ -276,147 +281,158 @@ class ImageDeploy {
         $this.installPath = "$($this.installRoot)images"
         $this.cuPath = "$($this.installPath)\CU"
         $this.ssuPath = "$($this.installPath)\SSU"
-        $this.driverPath = "$($this.installRoot)Drivers"
-    }
-    setScratch ([System.IO.DirectoryInfo]$scratch) {
-        $this.scratch = $scratch
-        [string]$this.scRoot = $scratch.Root
-    }
-    setRecovery ([System.IO.DirectoryInfo]$recovery) {
-        $this.recovery = $recovery
-        [string]$this.reRoot = $recovery.Root
-    }
-}
 
-#region Procedures
+        $this.model = Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty Model
+        $this.serial = Get-CimInstance -ClassName Win32_Bios | Select-Object -ExpandProperty SerialNumber
+        $this.driverPath = "$($this.installRoot)Drivers\$($this.deviceModel)"
+    }
 
-function Load-WinPEDrivers ([ImageDeploy] $usb) {
-    if (Test-Path "${usb.driverPath}\WinPE") {
+    loadDriversInWinPE() {
+        if (-Not Test-Path "$($this.driverPath)\WinPE") {
+            Write-Host "No WinPE drivers detected.." -ForegroundColor Yellow
+            return
+        }
+
         $drivers = Get-ChildItem "${usb.driverPath}\WinPE" -Filter *.inf -Recurse
-        Write-Host "Bootstrapping found drivers into WinPE Environment.." -ForegroundColor Yellow
         foreach ($d in $drivers) {
+            printKeyValue("Loading driver: ", $d.fullName)
             . drvload $d.fullName
         }
-    } else {
-        Write-Host "No WinPE drivers detected.." -ForegroundColor Yellow
     }
-}
 
-function Setup-WinRE ([ImageDeploy] $usb) {
-    Write-Host "`nMove WinRE to recovery partition.." -ForegroundColor Yellow
+    prompt() {
+        Clear-Host
 
-    $reWimPath = "$($usb.scRoot)Windows\System32\recovery\winre.wim"
-    if (Test-Path $reWimPath -ErrorAction SilentlyContinue) {
-        Write-Host "`nMoving the recovery wim into place.." -ForegroundColor Yellow
-        (Get-ChildItem -Path $reWimPath -Force).attributes = "NotContentIndexed"
-        Move-Item -Path $reWimPath -Destination "$($usb.recovery.FullName)\winre.wim"
-        (Get-ChildItem -Path "$($usb.recovery.FullName)\winre.wim" -Force).attributes = "ReadOnly", "Hidden", "System", "Archive", "NotContentIndexed"
+        $welcomeScreen = "IF9fICBfXyAgICBfXyAgX19fX19fICBfX19fX18gIF9fX19fXwovXCBcL1wgIi0uLyAgXC9cICBfXyBcL1wgIF9fX1wvXCAgX19fXApcIFwgXCBcIFwtLi9cIFwgXCAgX18gXCBcIFxfXyBcIFwgIF9fXAogXCBcX1wgXF9cIFwgXF9cIFxfXCBcX1wgXF9fX19fXCBcX19fX19cCiAgXC9fL1wvXy8gIFwvXy9cL18vXC9fL1wvX19fX18vXC9fX19fXy8KIF9fX19fICAgX19fX19fICBfX19fX18gIF9fICAgICAgX19fX19fICBfXyAgX18KL1wgIF9fLS4vXCAgX19fXC9cICA9PSBcL1wgXCAgICAvXCAgX18gXC9cIFxfXCBcClwgXCBcL1wgXCBcICBfX1xcIFwgIF8tL1wgXCBcX19fXCBcIFwvXCBcIFxfX19fIFwKIFwgXF9fX18tXCBcX19fX19cIFxfXCAgIFwgXF9fX19fXCBcX19fX19cL1xfX19fX1wKICBcL19fX18vIFwvX19fX18vXC9fLyAgICBcL19fX19fL1wvX19fX18vXC9fX19fXy8KICAgICAgIF9fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fCiAgICAgICBXaW5kb3dzIDEwIERldmljZSBQcm92aXNpb25pbmcgVG9vbAogICAgICAgKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKio="
+        Write-Host $([system.text.encoding]::UTF8.GetString([system.convert]::FromBase64String($welcomeScreen)))
+        Write-Host "=================================================================="
+        printKeyValue("Model: ", $this.deviceModel)
+        printKeyValue("Serial: ", $this.serial)
+        Write-Host "===================== Press ENTER to install ====================="
 
-        Write-Host "`nSetting the recovery environment.." -ForegroundColor Yellow
-        Invoke-Cmdline -application "$($usb.scRoot)Windows\System32\reagentc" -argumentList "/SetREImage /Path $($usb.recovery.FullName) /target $($usb.scRoot)Windows" -silent
+        Read-Host
     }
-}
 
-function Apply-Image ([ImageDeploy] $usb) {
-    Write-Host "`nApplying the windows image from the USB.." -ForegroundColor Yellow
-    $imageIndex = Get-Content "$($usb.installPath)\imageIndex.json" -Raw | ConvertFrom-Json -Depth 20
-    Invoke-Cmdline -application "DISM" -argumentList "/Apply-Image /ImageFile:$($usb.installPath)\install.wim /Index:$($imageIndex.imageIndex) /ApplyDir:$($usb.scRoot) /EA /ScratchDir:$($usb.scratch)"
-}
+    prepareDisk() {
+        Write-Host "Configuring drive partitions.." -ForegroundColor Yellow
+        $targetDrive = Get-SystemDeviceId
+        Set-DrivePartition -winPEDrive $usb.winPEDrive -targetDrive $targetDrive
 
-function Inject-AutoPilotConfig ([ImageDeploy] $usb) {
-    if (Test-Path "$PSScriptRoot\AutopilotConfigurationFile.json" -ErrorAction SilentlyContinue) {
-        if (Test-Path "$($usb.scRoot)Windows\Provisioning\Autopilot") {
-            Write-Host "`nInjecting AutoPilot configuration file.." -ForegroundColor Yellow
-            Copy-Item "$PSScriptRoot\AutopilotConfigurationFile.json" -Destination "$($usb.scRoot)Windows\Provisioning\Autopilot\AutopilotConfigurationFile.json" -Force | Out-Null
+        Write-Host "Setting up Scratch & Recovery paths.." -ForegroundColor Yellow
+
+        $this.scratch = "W:\recycler\scratch"
+        $this.scRoot = $this.scratch.Root
+        $this.recovery = "R:\RECOVERY\WINDOWSRE"
+        $this.reRoot = $this.recovery.Root
+
+        New-Item -Path $this.scratch.FullName -ItemType Directory -Force | Out-Null
+        New-Item -Path $this.recovery.FullName -ItemType Directory -Force | Out-Null
+    }
+
+    deployImage() {
+        Write-Host "Applying the windows image from the USB.." -ForegroundColor Yellow
+        $imageIndex = Get-Content "$($this.installPath)\imageIndex.json" -Raw | ConvertFrom-Json -Depth 20
+        Invoke-Cmdline -application "DISM" -argumentList "/Apply-Image /ImageFile:$($this.installPath)\install.wim /Index:$($imageIndex.imageIndex) /ApplyDir:$($this.scRoot) /EA /ScratchDir:$($this.scratch)"
+    }
+
+    postDeploy() {
+        $this.injectAutopilotConfig()
+        $this.setupWindowsRecovery()
+        $this.makeDiskBootable()
+        $this.applyUnattend()
+        $this.injectProvisioningPackages()
+        $this.injectOSDrivers()
+    }
+
+    injectAutopilotConfig() {
+        if (-Not Test-Path "$PSScriptRoot\AutopilotConfigurationFile.json" -ErrorAction SilentlyContinue) {
+            return
         }
+
+        if (Test-Path "$($this.scRoot)Windows\Provisioning\Autopilot") {
+            return
+        }
+
+        Write-Host "`nInjecting AutoPilot configuration file.." -ForegroundColor Yellow
+        Copy-Item "$PSScriptRoot\AutopilotConfigurationFile.json" -Destination "$($usb.scRoot)Windows\Provisioning\Autopilot\AutopilotConfigurationFile.json" -Force | Out-Null
     }
-}
 
-function Install-Bootloader ([ImageDeploy] $usb) {
-    Write-Host "`nSetting the boot environment.." -ForegroundColor Yellow
-    Invoke-Cmdline -application "$($usb.scRoot)Windows\System32\bcdboot" -argumentList "$($usb.scRoot)Windows /s s: /f all"
-}
+    setupWindowsRecovery() {
+        Write-Host "Move WinRE to recovery partition.." -ForegroundColor Yellow
 
-function Inject-Unattend ([ImageDeploy] $usb) {
-    Write-Host "`nLooking for unattended.xml.." -ForegroundColor Yellow
-    if (Test-Path "$($usb.winPESource)scripts\unattended.xml" -ErrorAction SilentlyContinue) {
+        $reWimPath = "$($this.scRoot)Windows\System32\recovery\winre.wim"
+        if (-Not Test-Path $reWimPath -ErrorAction SilentlyContinue) {
+            return
+        }
+
+        Write-Host "Moving the recovery wim into place.." -ForegroundColor Yellow
+        (Get-ChildItem -Path $reWimPath -Force).attributes = "NotContentIndexed"
+        Move-Item -Path $reWimPath -Destination "$($this.recovery.FullName)\winre.wim"
+        (Get-ChildItem -Path "$($this.recovery.FullName)\winre.wim" -Force).attributes = "ReadOnly", "Hidden", "System", "Archive", "NotContentIndexed"
+        Write-Host "`nSetting the recovery environment.." -ForegroundColor Yellow
+        Invoke-Cmdline -application "$($this.scRoot)Windows\System32\reagentc" -argumentList "/SetREImage /Path $($this.recovery.FullName) /target $($this.scRoot)Windows" -silent
+    }
+
+    makeDiskBootable() {
+        Write-Host "Setting the boot environment.." -ForegroundColor Yellow
+        Invoke-Cmdline -application "$($this.scRoot)Windows\System32\bcdboot" -argumentList "$($this.scRoot)Windows /s s: /f all"
+    }
+
+    applyUnattend() {
+        Write-Host "Looking for unattended.xml.." -ForegroundColor Yellow
+        if (-Not Test-Path "$($this.winPESource)scripts\unattended.xml" -ErrorAction SilentlyContinue) {
+            Write-Host "Nothing found. Moving on.." -ForegroundColor Red
+        }
+
         Write-Host "Found it! Copying over to scratch drive.." -ForegroundColor Green
-        if(-not (Test-Path "$($usb.scRoot)Windows\Panther" -ErrorAction SilentlyContinue)){
-            New-Item -Path "$($usb.scRoot)Windows\Panther" -ItemType Directory -Force | Out-Null
-         }
-        Copy-Item -Path "$($usb.winPESource)\scripts\unattended.xml" -Destination "$($usb.scRoot)Windows\Panther\unattended.xml" | Out-Null
-    }
-    else {
-        Write-Host "Nothing found. Moving on.." -ForegroundColor Red
-    }
-}
+        if(-not (Test-Path "$($this.scRoot)Windows\Panther" -ErrorAction SilentlyContinue)){
+            New-Item -Path "$($this.scRoot)Windows\Panther" -ItemType Directory -Force | Out-Null
+        }
 
-function Inject-Packages ([ImageDeploy] $usb) {
-    Write-Host "`nlooking for *.ppkg files.." -ForegroundColor Yellow
-    if (Test-Path "$($usb.winPESource)scripts\*.ppkg" -ErrorAction SilentlyContinue) {
+        Copy-Item -Path "$($this.winPESource)\scripts\unattended.xml" -Destination "$($this.scRoot)Windows\Panther\unattended.xml" | Out-Null
+    }
+
+    injectProvisioningPackages() {
+        Write-Host "`nlooking for *.ppkg files.." -ForegroundColor Yellow
+        if (-Not Test-Path "$($usb.winPESource)scripts\*.ppkg" -ErrorAction SilentlyContinue) {
+            Write-Host "Nothing found. Moving on.." -ForegroundColor Yellow
+            return
+        }
+
         Write-Host "Found them! Copying over to scratch drive.." -ForegroundColor Yellow
         Copy-Item -Path "$($usb.winPESource)\scripts\*.ppkg" -Destination "$($usb.scRoot)Windows\Panther\" | Out-Null
     }
-    else {
-        Write-Host "Nothing found. Moving on.." -ForegroundColor Yellow
-    }
-}
 
-function Inject-Drivers ([ImageDeploy] $usb, [string] $deviceModel) {
-    $modelDriverPath = "$($usb.DriverPath)\$deviceModel"
+    injectOSDrivers() {
+        $modelDriverPath = "$($usb.DriverPath)\$deviceModel"
+        if (-Not Test-Path $modelDriverPath) {
+            return
+        }
 
-    if (Test-Path $modelDriverPath) {
         Write-Host "`nApplying drivers.." -ForegroundColor Yellow
         Invoke-Cmdline -application "DISM" -argumentList "/Image:$($usb.scRoot) /Add-Driver /Driver:$modelDriverPath /recurse"
     }
 }
 
-#endregion
-
 #region Main process
 try {
-    $errorMsg = $null
-    $usb = [ImageDeploy]::new($env:SystemDrive)
-    $sw = [System.Diagnostics.Stopwatch]::StartNew()
-
-    $deviceModel = Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty Model
-    Write-Host "`nDevice Model: " -ForegroundColor Yellow -NoNewline
-    Write-Host $deviceModel -ForegroundColor Cyan
-
-    Load-WinPEDrivers $usb
     Set-PowerPolicy -powerPlan HighPerformance
-    Clear-Host
-    $welcomeScreen = "IF9fICBfXyAgICBfXyAgX19fX19fICBfX19fX18gIF9fX19fXwovXCBcL1wgIi0uLyAgXC9cICBfXyBcL1wgIF9fX1wvXCAgX19fXApcIFwgXCBcIFwtLi9cIFwgXCAgX18gXCBcIFxfXyBcIFwgIF9fXAogXCBcX1wgXF9cIFwgXF9cIFxfXCBcX1wgXF9fX19fXCBcX19fX19cCiAgXC9fL1wvXy8gIFwvXy9cL18vXC9fL1wvX19fX18vXC9fX19fXy8KIF9fX19fICAgX19fX19fICBfX19fX18gIF9fICAgICAgX19fX19fICBfXyAgX18KL1wgIF9fLS4vXCAgX19fXC9cICA9PSBcL1wgXCAgICAvXCAgX18gXC9cIFxfXCBcClwgXCBcL1wgXCBcICBfX1xcIFwgIF8tL1wgXCBcX19fXCBcIFwvXCBcIFxfX19fIFwKIFwgXF9fX18tXCBcX19fX19cIFxfXCAgIFwgXF9fX19fXCBcX19fX19cL1xfX19fX1wKICBcL19fX18vIFwvX19fX18vXC9fLyAgICBcL19fX19fL1wvX19fX18vXC9fX19fXy8KICAgICAgIF9fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fCiAgICAgICBXaW5kb3dzIDEwIERldmljZSBQcm92aXNpb25pbmcgVG9vbAogICAgICAgKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKio="
-    Write-Host $([system.text.encoding]::UTF8.GetString([system.convert]::FromBase64String($welcomeScreen)))
-    Write-Host "===================== Press ENTER to install ====================="
-    Read-Host
+
+    $imageDeploy = [ImageDeploy]::new($env:SystemDrive)
+
+    $imageDeploy.loadDriversInWinPE()
+    $imageDeploy.prompt()
+
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
     Write-Host "`nSetting Install.Wim location.." -ForegroundColor Yellow
     if (!($usb.installRoot)) {
         throw "Coudn't find install.wim anywhere..."
     }
 
-
-    Write-Host "`nConfiguring drive partitions.." -ForegroundColor Yellow
-    $drives = @(Get-PhysicalDisk)
-    $targetDrive = Get-SystemDeviceId
-    Set-DrivePartition -winPEDrive $usb.winPEDrive -targetDrive $targetDrive
-
-    Write-Host "`nSetting up Scratch & Recovery paths.." -ForegroundColor Yellow
-    $usb.setScratch("W:\recycler\scratch")
-    $usb.setRecovery("R:\RECOVERY\WINDOWSRE")
-    New-Item -Path $usb.scratch.FullName -ItemType Directory -Force | Out-Null
-    New-Item -Path $usb.recovery.FullName -ItemType Directory -Force | Out-Null
-
-    Apply-Image $usb
-    Inject-AutoPilotConfig $usb
-    Setup-WinRE $usb
-
-    Install-Bootloader $usb
-
-    Inject-Unattend $usb
-    Inject-Packages $usb
-    Inject-Drivers $usb $deviceModel
+    $imageDeploy.prepareDisk()
+    $imageDeploy.deployImage()
+    $imageDeploy.postDeploy()
 
     $completed = $true
 }
@@ -430,10 +446,9 @@ finally {
         Write-Warning $errorMsg
     } else {
         if ($completed) {
-            Write-Host "`nProvisioning process completed..`nTotal time taken: $($sw.elapsed)" -ForegroundColor Green
-        }
-        else {
-            Write-Host "`nProvisioning process stopped prematurely..`nTotal time taken: $($sw.elapsed)" -ForegroundColor Green
+            Write-Host "Provisioning process completed..`nTotal time taken: $($sw.elapsed)" -ForegroundColor Green
+        } else {
+            Write-Host "Provisioning process stopped prematurely..`nTotal time taken: $($sw.elapsed)" -ForegroundColor Green
         }
     }
 }
