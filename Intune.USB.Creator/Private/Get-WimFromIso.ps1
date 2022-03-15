@@ -14,7 +14,14 @@ function Get-WimFromIso {
             if (!(Test-Path $wimDestination -ErrorAction SilentlyContinue)) {
                 New-Item -Path $wimDestination -ItemType Directory -Force | Out-Null
             }
-            Invoke-FileTransfer -source "$($volume.DriveLetter)`:\sources\install.wim" -destination "$wimDestination\install.wim"
+
+            $wimSource = "$($volume.DriveLetter)`:\sources"
+
+            if (Test-Path "$wimSource\install.esd") {
+                throw "You are trying to use a consumer ISO, which is not supported."
+            }
+
+            Invoke-FileTransfer -source "$wimSource\install.wim"  -destination "$wimDestination\install.wim"
         }
     }
     catch {
