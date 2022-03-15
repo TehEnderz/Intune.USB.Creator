@@ -293,7 +293,7 @@ class ImageDeploy {
     prepareDisk() {
         Write-Host "Configuring drive partitions.." -ForegroundColor Yellow
         $targetDrive = Get-SystemDeviceId
-        Set-DrivePartition -winPEDrive $usb.winPEDrive -targetDrive $targetDrive
+        Set-DrivePartition -winPEDrive $this.winPEDrive -targetDrive $targetDrive
 
         Write-Host "Setting up Scratch & Recovery paths.." -ForegroundColor Yellow
 
@@ -331,7 +331,7 @@ class ImageDeploy {
         }
 
         Write-Host "`nInjecting AutoPilot configuration file.." -ForegroundColor Yellow
-        Copy-Item "$PSScriptRoot\AutopilotConfigurationFile.json" -Destination "$($usb.scRoot)Windows\Provisioning\Autopilot\AutopilotConfigurationFile.json" -Force | Out-Null
+        Copy-Item "$PSScriptRoot\AutopilotConfigurationFile.json" -Destination "$($this.scRoot)Windows\Provisioning\Autopilot\AutopilotConfigurationFile.json" -Force | Out-Null
     }
 
     setupWindowsRecovery() {
@@ -371,23 +371,23 @@ class ImageDeploy {
 
     injectProvisioningPackages() {
         Write-Host "`nlooking for *.ppkg files.." -ForegroundColor Yellow
-        if (-Not Test-Path "$($usb.winPESource)scripts\*.ppkg" -ErrorAction SilentlyContinue) {
+        if (-Not Test-Path "$($this.winPESource)scripts\*.ppkg" -ErrorAction SilentlyContinue) {
             Write-Host "Nothing found. Moving on.." -ForegroundColor Yellow
             return
         }
 
         Write-Host "Found them! Copying over to scratch drive.." -ForegroundColor Yellow
-        Copy-Item -Path "$($usb.winPESource)\scripts\*.ppkg" -Destination "$($usb.scRoot)Windows\Panther\" | Out-Null
+        Copy-Item -Path "$($this.winPESource)\scripts\*.ppkg" -Destination "$($this.scRoot)Windows\Panther\" | Out-Null
     }
 
     injectOSDrivers() {
-        $modelDriverPath = "$($usb.DriverPath)\$deviceModel"
+        $modelDriverPath = "$($this.DriverPath)\$deviceModel"
         if (-Not Test-Path $modelDriverPath) {
             return
         }
 
         Write-Host "`nApplying drivers.." -ForegroundColor Yellow
-        Invoke-Cmdline -application "DISM" -argumentList "/Image:$($usb.scRoot) /Add-Driver /Driver:$modelDriverPath /recurse"
+        Invoke-Cmdline -application "DISM" -argumentList "/Image:$($this.scRoot) /Add-Driver /Driver:$modelDriverPath /recurse"
     }
 }
 
@@ -403,7 +403,7 @@ try {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
     Write-Host "`nSetting Install.Wim location.." -ForegroundColor Yellow
-    if (!($usb.installRoot)) {
+    if (!($imageDeploy.installRoot)) {
         throw "Coudn't find install.wim anywhere..."
     }
 
