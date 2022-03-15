@@ -66,10 +66,10 @@ function Invoke-Cmdline {
     )
     if ($silent) {
         cmd /c "$application $argumentList > nul 2>&1"
-    }
-    else {
+    } else {
         cmd /c "$application $argumentList"
     }
+
     if ($LASTEXITCODE -ne 0) {
         throw "An error has occurred.."
     }
@@ -132,6 +132,7 @@ function Get-SystemDeviceId {
         throw $_
     }
 }
+
 function Set-DrivePartition {
     [cmdletbinding()]
     param (
@@ -232,26 +233,6 @@ function Find-InstallWim {
         }
     }
 }
-
-function Add-Package {
-    [cmdletbinding()]
-    param (
-        [parameter(Mandatory = $true)]
-        [string]$scratchDrive,
-
-        [parameter(Mandatory = $true)]
-        [string]$scratchPath,
-
-        [parameter(Mandatory = $true)]
-        [string]$packagePath
-    )
-    if (!(Get-ChildItem $packagePath)) {
-        Write-Host "No update packages found at path: $packagePath" -ForegroundColor Cyan
-    }
-    else {
-        Invoke-Cmdline -application "DISM" -argumentList "/Image:$scratchDrive /Add-Package /PackagePath:$packagePath /ScratchDir:$scratchPath"
-    }
-}
 #endregion
 
 
@@ -271,16 +252,12 @@ class ImageDeploy {
     [System.IO.DirectoryInfo]   $recovery = $null
     [string]                    $reRoot = $null
     [System.IO.DirectoryInfo]   $driverPath = $null
-    [System.IO.DirectoryInfo]   $cuPath = $null
-    [System.IO.DirectoryInfo]   $ssuPath = $null
 
     ImageDeploy ([string]$winPEDrive) {
         $this.winPEDrive = $winPEDrive
         $this.volumeInfo = Get-DiskPartVolume -winPEDrive $winPEDrive
         $this.installRoot = (Find-InstallWim -volumeInfo $($this.volumeInfo)).DriveRoot
         $this.installPath = "$($this.installRoot)images"
-        $this.cuPath = "$($this.installPath)\CU"
-        $this.ssuPath = "$($this.installPath)\SSU"
 
         $this.model = Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty Model
         $this.serial = Get-CimInstance -ClassName Win32_Bios | Select-Object -ExpandProperty SerialNumber
