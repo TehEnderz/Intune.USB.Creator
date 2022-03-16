@@ -252,6 +252,8 @@ class ImageDeploy {
     [System.IO.DirectoryInfo]   $recovery = $null
     [string]                    $reRoot = $null
     [System.IO.DirectoryInfo]   $driverPath = $null
+    [string]                    $model
+    [string]                    $serial
 
     ImageDeploy ([string]$winPEDrive) {
         $this.winPEDrive = $winPEDrive
@@ -265,12 +267,12 @@ class ImageDeploy {
     }
 
     loadDriversInWinPE() {
-        if (-Not Test-Path "$($this.driverPath)\WinPE") {
+        if (!(Test-Path "$($this.driverPath)\WinPE")) {
             Write-Host "No WinPE drivers detected.." -ForegroundColor Yellow
             return
         }
 
-        $drivers = Get-ChildItem "${usb.driverPath}\WinPE" -Filter *.inf -Recurse
+        $drivers = Get-ChildItem "$($this.driverPath)\WinPE" -Filter *.inf -Recurse
         foreach ($d in $drivers) {
             printKeyValue("Loading driver: ", $d.fullName)
             . drvload $d.fullName
@@ -322,7 +324,7 @@ class ImageDeploy {
     }
 
     injectAutopilotConfig() {
-        if (-Not Test-Path "$PSScriptRoot\AutopilotConfigurationFile.json" -ErrorAction SilentlyContinue) {
+        if (!(Test-Path "$PSScriptRoot\AutopilotConfigurationFile.json" -ErrorAction SilentlyContinue)) {
             return
         }
 
@@ -338,7 +340,7 @@ class ImageDeploy {
         Write-Host "Move WinRE to recovery partition.." -ForegroundColor Yellow
 
         $reWimPath = "$($this.scRoot)Windows\System32\recovery\winre.wim"
-        if (-Not Test-Path $reWimPath -ErrorAction SilentlyContinue) {
+        if (!(Test-Path $reWimPath -ErrorAction SilentlyContinue)) {
             return
         }
 
@@ -357,7 +359,7 @@ class ImageDeploy {
 
     applyUnattend() {
         Write-Host "Looking for unattended.xml.." -ForegroundColor Yellow
-        if (-Not Test-Path "$($this.winPESource)scripts\unattended.xml" -ErrorAction SilentlyContinue) {
+        if (!(Test-Path "$($this.winPESource)scripts\unattended.xml" -ErrorAction SilentlyContinue)) {
             Write-Host "Nothing found. Moving on.." -ForegroundColor Red
         }
 
@@ -371,7 +373,7 @@ class ImageDeploy {
 
     injectProvisioningPackages() {
         Write-Host "`nlooking for *.ppkg files.." -ForegroundColor Yellow
-        if (-Not Test-Path "$($this.winPESource)scripts\*.ppkg" -ErrorAction SilentlyContinue) {
+        if (!(Test-Path "$($this.winPESource)scripts\*.ppkg" -ErrorAction SilentlyContinue)) {
             Write-Host "Nothing found. Moving on.." -ForegroundColor Yellow
             return
         }
@@ -381,8 +383,8 @@ class ImageDeploy {
     }
 
     injectOSDrivers() {
-        $modelDriverPath = "$($this.DriverPath)\$deviceModel"
-        if (-Not Test-Path $modelDriverPath) {
+        $modelDriverPath = "$($this.DriverPath)\$($this.model)"
+        if (!(Test-Path $modelDriverPath)) {
             return
         }
 
