@@ -62,7 +62,7 @@ function Publish-ImageToUSB {
         #region get Autopilot config from azure
         if ($getAutopilotCfg) {
             Write-Host "`nGrabbing Autopilot config file from Azure.." -ForegroundColor Yellow
-            Get-AutopilotPolicy -fileDestination $usb.downloadPath
+            Get-AutopilotPolicy -fileDestination "$($usb.downloadPath)\AutopilotConfigs"
         }
         #endregion
         #region choose and partition USB
@@ -89,7 +89,7 @@ function Publish-ImageToUSB {
         #region write Autopilot to USB
         if ($getAutopilotCfg) {
             Write-Host "`nWriting Autopilot to USB.." -ForegroundColor Yellow -NoNewline
-            Write-ToUSB -Path "$($usb.downloadPath)\AutopilotConfigurationFile.json" -Destination "$($usb.drive):\scripts\"
+            Write-ToUSB -Path "$($usb.downloadPath)\AutopilotConfigs" -Destination "$($usb.drive):\scripts\"
         }
         #endregion
         #region Create drivers folder

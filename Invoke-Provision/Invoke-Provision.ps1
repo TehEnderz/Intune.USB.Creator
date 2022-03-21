@@ -74,6 +74,7 @@ function Invoke-Cmdline {
         throw "An error has occurred.."
     }
 }
+
 function Get-DiskPartVolume {
     [cmdletbinding()]
     param (
@@ -113,14 +114,14 @@ exit
 }
 function Get-SystemDeviceId {
     try {
-       $dataDrives = $drives | ?{ $_.BusType -ne "USB"}
+       $dataDrives = Get-PhysicalDisk | Where-Object { $_.BusType -ne "USB"}
        if (@($DataDrives).count -eq 1) {
             $targetDrive = $DataDrives[0].DeviceId
             return $targetDrive
        }
        elseif (@($DataDrives).count -gt 1) {
             Write-Host "More than one disk has been detected. Select disk where Windows should be installed" -ForegroundColor Yellow
-            $DataDrives | ft DeviceId, FriendlyName, Size| Out-String | % {Write-Host $_ -ForegroundColor Cyan}
+            $DataDrives | Format-Table DeviceId, FriendlyName, Size| Out-String | Foreach-Object {Write-Host $_ -ForegroundColor Cyan}
             $targetDrive = Read-Host "Please make a selection..."
             return $targetDrive
         }
@@ -264,6 +265,8 @@ class ImageDeploy {
         $this.model = Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty Model
         $this.serial = Get-CimInstance -ClassName Win32_Bios | Select-Object -ExpandProperty SerialNumber
         $this.driverPath = "$($this.installRoot)Drivers\$($this.deviceModel)"
+
+
     }
 
     loadDriversInWinPE() {
@@ -285,11 +288,19 @@ class ImageDeploy {
         $welcomeScreen = "IF9fICBfXyAgICBfXyAgX19fX19fICBfX19fX18gIF9fX19fXwovXCBcL1wgIi0uLyAgXC9cICBfXyBcL1wgIF9fX1wvXCAgX19fXApcIFwgXCBcIFwtLi9cIFwgXCAgX18gXCBcIFxfXyBcIFwgIF9fXAogXCBcX1wgXF9cIFwgXF9cIFxfXCBcX1wgXF9fX19fXCBcX19fX19cCiAgXC9fL1wvXy8gIFwvXy9cL18vXC9fL1wvX19fX18vXC9fX19fXy8KIF9fX19fICAgX19fX19fICBfX19fX18gIF9fICAgICAgX19fX19fICBfXyAgX18KL1wgIF9fLS4vXCAgX19fXC9cICA9PSBcL1wgXCAgICAvXCAgX18gXC9cIFxfXCBcClwgXCBcL1wgXCBcICBfX1xcIFwgIF8tL1wgXCBcX19fXCBcIFwvXCBcIFxfX19fIFwKIFwgXF9fX18tXCBcX19fX19cIFxfXCAgIFwgXF9fX19fXCBcX19fX19cL1xfX19fX1wKICBcL19fX18vIFwvX19fX18vXC9fLyAgICBcL19fX19fL1wvX19fX18vXC9fX19fXy8KICAgICAgIF9fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fCiAgICAgICBXaW5kb3dzIDEwIERldmljZSBQcm92aXNpb25pbmcgVG9vbAogICAgICAgKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKio="
         Write-Host $([system.text.encoding]::UTF8.GetString([system.convert]::FromBase64String($welcomeScreen)))
         Write-Host "=================================================================="
-        printKeyValue("Model: ", $this.deviceModel)
+        printKeyValue("Model:  ", $this.model)
         printKeyValue("Serial: ", $this.serial)
         Write-Host "===================== Press ENTER to install ====================="
 
-        Read-Host
+        switch ([Console]::ReadKey()) {
+            'p' {
+                # TODO: change profile
+            }
+
+            'Enter' {
+                Return # Move on to imaging.
+            }
+        }
     }
 
     prepareDisk() {
@@ -308,32 +319,26 @@ class ImageDeploy {
         New-Item -Path $this.recovery.FullName -ItemType Directory -Force | Out-Null
     }
 
-    deployImage() {
-        Write-Host "Applying the windows image from the USB.." -ForegroundColor Yellow
-        $imageIndex = Get-Content "$($this.installPath)\imageIndex.json" -Raw | ConvertFrom-Json -Depth 20
-        Invoke-Cmdline -application "DISM" -argumentList "/Apply-Image /ImageFile:$($this.installPath)\install.wim /Index:$($imageIndex.imageIndex) /ApplyDir:$($this.scRoot) /EA /ScratchDir:$($this.scratch)"
-    }
-
     postDeploy() {
         $this.injectAutopilotConfig()
         $this.setupWindowsRecovery()
         $this.makeDiskBootable()
         $this.applyUnattend()
         $this.injectProvisioningPackages()
-        $this.injectOSDrivers()
     }
 
     injectAutopilotConfig() {
-        if (!(Test-Path "$PSScriptRoot\AutopilotConfigurationFile.json" -ErrorAction SilentlyContinue)) {
+        if (!(Test-Path "$PSScriptRoot\AutopilotConfigs" -ErrorAction SilentlyContinue)) {
             return
         }
 
-        if (Test-Path "$($this.scRoot)Windows\Provisioning\Autopilot") {
-            return
+        $autopilotConfig = Get-ChildItem "$PSScriptRoot\AutopilotConfigs" | Select-Object -ExpandProperty Name
+        if ($autopilotConfig.Length -gt 1) {
+            $autopilotConfig = $autopilotConfig | Out-GridView -PassThru -Title "Choose profile"
         }
 
         Write-Host "`nInjecting AutoPilot configuration file.." -ForegroundColor Yellow
-        Copy-Item "$PSScriptRoot\AutopilotConfigurationFile.json" -Destination "$($this.scRoot)Windows\Provisioning\Autopilot\AutopilotConfigurationFile.json" -Force | Out-Null
+        Copy-Item "$PSScriptRoot\AutopilotConfigs\$autopilotConfig" -Destination "$($this.scRoot)Windows\Provisioning\Autopilot\AutopilotConfigurationFile.json" -Force | Out-Null
     }
 
     setupWindowsRecovery() {
@@ -361,6 +366,7 @@ class ImageDeploy {
         Write-Host "Looking for unattended.xml.." -ForegroundColor Yellow
         if (!(Test-Path "$($this.winPESource)scripts\unattended.xml" -ErrorAction SilentlyContinue)) {
             Write-Host "Nothing found. Moving on.." -ForegroundColor Red
+            return
         }
 
         Write-Host "Found it! Copying over to scratch drive.." -ForegroundColor Green
@@ -381,16 +387,6 @@ class ImageDeploy {
         Write-Host "Found them! Copying over to scratch drive.." -ForegroundColor Yellow
         Copy-Item -Path "$($this.winPESource)\scripts\*.ppkg" -Destination "$($this.scRoot)Windows\Panther\" | Out-Null
     }
-
-    injectOSDrivers() {
-        $modelDriverPath = "$($this.DriverPath)\$($this.model)"
-        if (!(Test-Path $modelDriverPath)) {
-            return
-        }
-
-        Write-Host "`nApplying drivers.." -ForegroundColor Yellow
-        Invoke-Cmdline -application "DISM" -argumentList "/Image:$($this.scRoot) /Add-Driver /Driver:$modelDriverPath /recurse"
-    }
 }
 
 #region Main process
@@ -410,8 +406,20 @@ try {
     }
 
     $imageDeploy.prepareDisk()
-    $imageDeploy.deployImage()
+
+    # Handled outside class to show progress.
+    Write-Host "Applying the windows image from the USB.." -ForegroundColor Yellow
+    $imageIndex = Get-Content "$($imageDeploy.installPath)\imageIndex.json" -Raw | ConvertFrom-Json -Depth 20
+    Invoke-Cmdline -application "DISM" -argumentList "/Apply-Image /ImageFile:$($imageDeploy.installPath)\install.wim /Index:$($imageIndex.imageIndex) /ApplyDir:$($imageDeploy.scRoot) /EA /ScratchDir:$($imageDeploy.scratch)" -Verbose
+
     $imageDeploy.postDeploy()
+
+    # Handled outside class to show progress.
+    $modelDriverPath = "$($imageDeploy.DriverPath)\$($imageDeploy.model)"
+    if (Test-Path $modelDriverPath) {
+        Write-Host "Applying drivers.." -ForegroundColor Yellow
+        Invoke-Cmdline -application "DISM" -argumentList "/Image:$($imageDeploy.scRoot) /Add-Driver /Driver:$modelDriverPath /recurse"
+    }
 
     $completed = $true
 }

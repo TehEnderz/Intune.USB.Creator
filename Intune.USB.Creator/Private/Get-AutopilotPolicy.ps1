@@ -7,48 +7,45 @@ function Get-AutopilotPolicy {
         [System.IO.FileInfo]$FileDestination
     )
     try {
-        if (!(Test-Path "$FileDestination\AutopilotConfigurationFile.json" -ErrorAction SilentlyContinue)) {
-            $modules = @(
-                "WindowsAutoPilotIntune",
-                "Microsoft.Graph.Intune"
-            )
-            if ($PSVersionTable.PSVersion.Major -eq 7) {
-                $modules | ForEach-Object {
-                    Import-Module $_ -UseWindowsPowerShell -ErrorAction SilentlyContinue 3>$null
-                }
-            }
-            else {
-                $modules | ForEach-Object {
-                    Import-Module $_
-                }
-            }
-            #region Connect to Intune
-            Connect-MSGraph | Out-Null
-            #endregion Connect to Intune
-            #region Get policies
-            $apPolicies = Get-AutopilotProfile
-            if (!($apPolicies)) {
-                Write-Warning "No Autopilot policies found.."
-            }
-            else {
-                if ($apPolicies.count -gt 1) {
-                    Write-Host "Multiple Autopilot policies found - select the correct one.." -ForegroundColor Cyan
-                    $selectedPolicy = $apPolicies | Select-Object displayName | Out-GridView -passthru
-                    $apPol = $apPolicies | Where-Object {$_.displayName -eq $selectedPolicy.displayName}
-                }
-                else {
-                    Write-Host "Policy found - saving to $FileDestination.." -ForegroundColor Cyan
-                    $apPol = $apPolicies
-                }
-                $apPol | ConvertTo-AutopilotConfigurationJSON | Out-File "$FileDestination\AutopilotConfigurationFile.json" -Encoding ascii -Force
-                Write-Host "Autopilot profile selected: " -ForegroundColor Cyan -NoNewline
-                Write-Host "$($apPol.displayName)" -ForegroundColor Green
-            }
-            #endregion Get policies
+        if (Test-Path "$FileDestination" -ErrorAction SilentlyContinue) {
+            Write-Host "Autopilot Configuration directory found locally: $FileDestination" -ForegroundColor Green
+            return
         }
-        else {
-            Write-Host "Autopilot Configuration file found locally: $FileDestination\AutopilotConfigurationFile.json" -ForegroundColor Green
+
+        New-Item -ItemType Directory -Path "$FileDestination" | Out-Null
+
+        $modules = @(
+            "WindowsAutoPilotIntune",
+            "Microsoft.Graph.Intune"
+        )
+        if ($PSVersionTable.PSVersion.Major -eq 7) {
+            $modules | ForEach-Object {
+                Import-Module $_ -UseWindowsPowerShell -ErrorAction SilentlyContinue 3>$null
+            }
+        } else {
+            $modules | ForEach-Object {
+                Import-Module $_
+            }
         }
+        #region Connect to Intune
+        Connect-MSGraph | Out-Null
+        #endregion Connect to Intune
+        #region Get policies
+        $apPolicies = Get-AutopilotProfile
+        if (!($apPolicies)) {
+            Write-Warning "No Autopilot policies found.."
+            return
+        }
+
+        foreach ($policy in $apPolicies) {
+            # NTFS does not allow colons in filesnames, which can occur in the display name.
+            $strippedName = $policy.displayName.Replace(":", "")
+
+            $policy | ConvertTo-AutopilotConfigurationJSON | Out-File "$FileDestination\$strippedName.json" -Encoding ascii -Force
+            Write-Host "Saved autopilot config: " -ForegroundColor Yellow -NoNewline
+            Write-Host $policy.displayName
+        }
+        #endregion Get policies
     }
     catch {
         $errorMsg = $_
