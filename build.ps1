@@ -4,10 +4,17 @@ param (
     [System.IO.FileInfo]$modulePath,
 
     [parameter(Mandatory = $false)]
-    [switch]$buildLocal
+    [switch]$buildLocal,
+
+    [parameter()] [switch]$clean,
+    [parameter()] [switch]$install
 )
 
 try {
+    if($clean) {
+        Remove-Item -Recurse -Force "$PSScriptRoot\bin"
+    }
+
     #region Generate a new version number
     $moduleName = Split-Path -Path $modulePath -Leaf
     $PreviousVersion = Find-Module -Name $moduleName -ErrorAction SilentlyContinue | Select-Object *
@@ -61,6 +68,16 @@ $($previousVersion.releaseNotes)
         ReleaseNotes      = $releaseNotes
     }
     Update-ModuleManifest @Manifest
+
+    if ($install) {
+        $systemModulePath = "$($global:PSHOME)\Modules"
+
+        If (Test-Path "$systemModulePath\$modulePath") {
+            Remove-Item -Force "$systemModulePath\$modulePath"
+        }
+
+        Copy-Item -Force $relPath $systemModulePath
+    }
 }
 catch {
     $_
